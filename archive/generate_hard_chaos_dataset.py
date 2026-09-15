@@ -96,7 +96,7 @@ def build_hard_dataset(n_pairs=100, n_steps=80, noise_std=0.02, seed=42):
 
 if __name__ == "__main__":
     df = build_hard_dataset(n_pairs=100, n_steps=80)
-    df.to_csv("hard_chaos_benchmark.csv", index=False)
+    df.to_csv("/mnt/user-data/outputs/hard_chaos_benchmark.csv", index=False)
 
     series_cols = [c for c in df.columns if c.startswith("t")]
     print(f"Dataset shape: {df.shape}")

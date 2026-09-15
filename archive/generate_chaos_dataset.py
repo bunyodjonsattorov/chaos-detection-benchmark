@@ -89,7 +89,7 @@ def build_dataset(n_per_class=100, n_steps=150, noise_std=0.02, seed=42):
 
 if __name__ == "__main__":
     df = build_dataset(n_per_class=100, n_steps=150)
-    df.to_csv("chaos_benchmark_logistic_map.csv", index=False)
+    df.to_csv("/mnt/user-data/outputs/chaos_benchmark_logistic_map.csv", index=False)
 
     print(f"Dataset shape: {df.shape}")
     print(f"\nClass balance:\n{df['label'].value_counts()}")

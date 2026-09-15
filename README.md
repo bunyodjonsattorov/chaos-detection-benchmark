@@ -1,118 +1,187 @@
-# Chaos Detection Benchmark: Can Time-Series Features Spot Real Chaos?
+# A benchmark for detecting dynamical structure in time series
 
-A small, self-contained benchmark testing whether automated time-series
-feature extraction (specifically [catch22](https://github.com/DynamicsAndNeuralSystems/catch22))
-can detect genuine deterministic chaos — even when an adversarial control
-strips away every linear statistical shortcut (mean, variance, power
-spectrum, lag-1 autocorrelation) that a naive classifier could otherwise
-exploit.
+Part of an Interdisciplinary Special Project (PHYS3888, University of Sydney)
+building a new benchmark database for time series classification, aimed at
+problems that cannot be solved by shape matching alone.
 
-## TL;DR
+Supervised by A/Prof Ben Fulcher (School of Physics) with Eli Muller
+(Faculty of Medicine and Health).
 
-| Classifier | Features used | Accuracy |
+---
+
+## The problem
+
+The standard benchmark used to evaluate time series classification
+algorithms consists largely of **pattern problems**: fixed-length windows
+where classes differ by shape, and where that shape sits in the window
+matters. Leaf outlines, gestures, heartbeats.
+
+Physical systems produce **process problems**: the recording is an
+arbitrary sample from a system that is already running. Where you started
+recording carries no information. Classes differ by the *rule generating
+the data*, not by any shape in the window.
+
+Existing benchmarks contain very few of these, so it is not known how well
+current algorithms handle them.
+
+## What this repository contains
+
+A confound-controlled dataset for one such property: detecting genuine
+nonlinear / deterministic structure. Every positive signal is paired with
+control signals constructed to match it on progressively more properties,
+so that classification cannot succeed through simple shortcuts.
+
+| Control type | Matches the positive on | Difficulty |
 |---|---|---|
-| Naive baseline | mean, std, lag-1 autocorrelation | 53.5% (≈ chance) |
-| catch22 + random forest | 22 canonical time-series features | **97.0% ± 2.9%** |
+| `periodic` | broad signal character | easiest |
+| `coloured_noise` | power spectrum | medium |
+| `iaaft_surrogate` | power spectrum **and** amplitude distribution | hardest |
 
-catch22 recovers the chaotic/non-chaotic distinction almost perfectly using
-features tied to genuine nonlinear structure (motif statistics, transition
-matrices, time-reversal asymmetry) — on a dataset explicitly constructed so
-that simple linear statistics carry *no* signal.
+All series are z-normalised and resampled to 100 points, so mean, variance
+and length carry no information.
 
-## Why this is a meaningful test
+## Dataset
 
-Distinguishing "chaotic" from "not chaotic" is trivial if the two classes
-also happen to differ in mean, variance, or spectral content — a classifier
-can cheat on those shortcuts without learning anything about the actual
-dynamics. This project rules that out in two stages:
+`data/chaos_benchmark_v2.csv` — 1360 series of 100 points.
 
-1. **Easy dataset** — chaotic vs. periodic logistic-map trajectories, both
-   z-normalized, with randomized starting points and matched observation
-   noise so amplitude/phase can't be memorized.
-2. **Hard dataset** — every chaotic series is paired with a **surrogate
-   decoy** generated via IAAFT (Iterative Amplitude Adjusted Fourier
-   Transform; Schreiber & Schmitz, 1996). The decoy has the *identical*
-   mean, variance, and power spectrum as its chaotic twin, but its phases
-   are randomized — destroying the actual chaotic mechanism while leaving
-   every linear statistic untouched. Only real nonlinear/deterministic
-   structure can tell the twins apart.
+| Domain | System | Positive class | Controls |
+|---|---|---|---|
+| simulated | logistic map (r ≈ 3.57–3.62) | chaotic | iaaft, periodic |
+| simulated | Lorenz (ρ = 28) | chaotic | iaaft, coloured noise |
+| simulated | Mackey-Glass (τ = 17) | chaotic | iaaft, coloured noise, periodic |
+| real | Santa Fe far-infrared laser | chaotic | iaaft, coloured noise |
+| real | Bonn EEG, seizure | nonlinear (contested) | iaaft |
+| real | Bonn EEG, healthy | nonlinear (contested) | iaaft |
 
-If a feature set can still separate the classes on the hard dataset, it's
-detecting genuine dynamics, not exploiting a confound.
+80 series per class per system.
 
-## Repository structure
+**Columns**: `id`, `system`, `domain`, `label`, `class_type`,
+`label_source`, `lyapunov_exponent`, `t0`–`t99`.
 
-```
-generate_chaos_dataset.py        # builds the "easy" chaotic vs. periodic dataset
-generate_hard_chaos_dataset.py   # builds the "hard" dataset with IAAFT surrogate decoys
-test_with_catch22.py             # extracts catch22 features and benchmarks a classifier
-chaos_benchmark_logistic_map.csv # output of generate_chaos_dataset.py
-hard_chaos_benchmark.csv         # output of generate_hard_chaos_dataset.py
-```
+### Label provenance
 
-## Setup
+The `label_source` column records how each label was established, because
+they are not equally certain:
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install --upgrade pip
-pip install numpy pandas scikit-learn pycatch22
-```
+- `analytic_lyapunov` — closed-form Lyapunov exponent (logistic map)
+- `numerical_lyapunov` — computed via tangent-space (Lorenz: 1.04,
+  literature ≈ 0.91) or trajectory separation (Mackey-Glass τ=17: 0.0095,
+  literature ≈ 0.006)
+- `published_domain_knowledge` — laser data, an established chaotic benchmark
+- `contested_literature` — EEG. Whether EEG reflects deterministic chaos is
+  **actively disputed**, so these are labelled `nonlinear_contested`, not
+  `chaotic`, and should not be used as chaos ground truth
+- `constructed_surrogate` / `constructed_stochastic` — the controls
+
+## Results
+
+Seven algorithm families, 5-fold cross-validation:
+
+| Algorithm | Family | Accuracy |
+|---|---|---|
+| ROCKET | convolution | **0.899** |
+| catch22 | feature-based | 0.875 |
+| Linear AR(5) | linear baseline | 0.760 |
+| Raw series + Random Forest | shape / interval proxy | 0.721 |
+| Naive statistics | baseline | 0.695 |
+| 1-NN Euclidean | distance-based | 0.674 |
+| MLP on raw series | neural network | 0.633 |
+
+### Difficulty ladder
+
+| Control | Naive | Linear AR | ROCKET | catch22 |
+|---|---|---|---|---|
+| periodic | 0.942 | 0.970 | 1.000 | 0.995 |
+| coloured noise | 0.774 | 0.700 | 0.990 | 0.975 |
+| IAAFT surrogate | 0.643 | 0.751 | 0.867 | 0.822 |
+
+### Findings
+
+1. **The confound controls work.** Every method drops monotonically as the
+   controls match more properties, and every method finds IAAFT surrogates
+   hardest. The difficulty is engineered, not accidental.
+
+2. **Shape-based and distance-based methods fail.** 1-NN Euclidean (0.674)
+   and raw-series Random Forest (0.721) perform poorly. These rely on
+   comparing shapes and on phase-dependent position, which is exactly what
+   a process problem removes.
+
+3. **Evidence of nonlinear structure.** IAAFT surrogates preserve
+   everything a linear process can explain. A fitted AR(5) model reaches
+   0.751 against surrogates while ROCKET reaches 0.867 and catch22 0.822.
+
+### Limitations
+
+- ROCKET, a mainstream convolution method not designed for dynamics,
+  outperforms catch22. The claim "physics-aware methods win" is **not**
+  supported; the supported claim is that methods capturing temporal
+  structure succeed while simple statistics and shape comparison fail.
+- The AR(5) baseline scores above chance on surrogates (0.751), higher
+  than expected if surrogate matching were exact. IAAFT may not fully
+  converge on 100-point windows. Unresolved.
+- No nonlinear but non-chaotic positives, so "nonlinear" and "chaotic"
+  are not separated.
+- Real-data positives (laser, EEG) have no computed Lyapunov ground truth.
+- Leave-one-system-out generalisation has not been re-run on this version.
 
 ## Usage
 
-**1. Generate the easy dataset**
-
 ```bash
-python3 generate_chaos_dataset.py
+pip install -r requirements.txt
+python download_data.py              # fetches third-party raw data
+python src/build_final_dataset.py    # writes data/chaos_benchmark_v2.csv
+python src/multi_algorithm_benchmark.py
 ```
 
-Creates `chaos_benchmark_logistic_map.csv` — 200 logistic-map series (100
-chaotic, r ∈ {3.7, 3.9, 3.95, 3.99}; 100 periodic, r ∈ {2.8, 3.2, 3.45,
-3.5}), each with its analytically computed Lyapunov exponent as ground
-truth.
+Scripts expect to run from the repository root, and read/write raw data
+under `data/`.
 
-**2. Generate the hard dataset**
+## Repository layout
 
-```bash
-python3 generate_hard_chaos_dataset.py
+```
+src/     current pipeline
+  build_final_dataset.py        dataset generator (seeded, reproducible)
+  multi_algorithm_benchmark.py  seven-family comparison
+  evaluate_final.py             catch22 vs naive baseline
+  chaos_decision_tree.py        independent reimplementation of Toker et al. (2020)
+  leave_one_domain_out_test.py  cross-system generalisation test
+
+data/    dataset and raw inputs (EEG fetched by download_data.py)
+docs/    concept glossary, full write-up, status briefing
+archive/ superseded earlier versions, kept for history
 ```
 
-Creates `hard_chaos_benchmark.csv` — 100 weakly chaotic series (r ∈ {3.60,
-3.62, 3.65, 3.68}, near the edge of chaos) each paired with an IAAFT
-surrogate decoy. Also prints a naive-feature baseline, which should land
-close to random (~53–55%), confirming the adversarial control worked.
+## Data sources
 
-**3. Test catch22 on the hard dataset**
+Raw datasets are **not redistributed here**. `download_data.py` fetches
+them from their public sources.
 
-```bash
-python3 test_with_catch22.py
-```
+- Santa Fe laser — Hübner, U., Abraham, N. B. & Weiss, C. O.
+  *Phys. Rev. A* **40**, 6354 (1989)
+- Bonn EEG — Andrzejak, R. G. et al. *Phys. Rev. E* **64**, 061907 (2001)
 
-Extracts 22 catch22 features per series and trains a random forest with
-5-fold cross-validation. Should land around 95–98% accuracy, and prints
-the most important individual features plus a confusion matrix.
+## References
 
-## Things to try
+- Middlehurst, M., Schäfer, P. & Bagnall, A. Bake off redux: a review and
+  experimental evaluation of recent time series classification algorithms.
+  *Data Mining and Knowledge Discovery* (2024)
+- Theiler, J., Eubank, S., Longtin, A., Galdrikian, B. & Farmer, J. D.
+  Testing for nonlinearity in time series: the method of surrogate data.
+  *Physica D* **58**, 77–94 (1992)
+- Schreiber, T. & Schmitz, A. Improved surrogate data for nonlinearity
+  tests. *Phys. Rev. Lett.* **77**, 635–638 (1996)
+- Toker, D., Sommer, F. T. & D'Esposito, M. A simple method for detecting
+  chaos in nature. *Communications Biology* **3**, 11 (2020)
+- Lubba, C. H. et al. catch22: CAnonical Time-series CHaracteristics.
+  *Data Mining and Knowledge Discovery* **33**, 1821–1852 (2019)
+- Dempster, A., Petitjean, F. & Webb, G. I. ROCKET: exceptionally fast and
+  accurate time series classification using random convolutional kernels.
+  *Data Mining and Knowledge Discovery* **34**, 1454–1495 (2020)
+- Owens, N. & Fulcher, B. Parameter inference from a non-stationary unknown
+  process. *Chaos* **34**, 101501 (2024)
+- Strogatz, S. *Nonlinear Dynamics and Chaos*. Westview Press (2014)
 
-- Change `chaotic_rs` in either generator script — values closer to 3.57
-  (the accumulation point / edge of chaos) make the problem harder.
-- Change `n_steps` — shorter series are harder to classify.
-- Change `n_iter` in `iaaft_surrogate()` — fewer iterations makes the decoy
-  a worse spectral/amplitude match, making the problem easier again.
-- In `test_with_catch22.py`, restrict to a single feature (e.g.
-  `CO_trev_1_num`, the time-reversal asymmetry statistic) to see how much
-  of the ~97% accuracy comes from one feature alone.
+## Status
 
-## Background reading
-
-- Theiler, J. et al. (1992). *Testing for nonlinearity in time series: the
-  method of surrogate data.* Physica D.
-- Schreiber, T. & Schmitz, A. (1996). *Improved surrogate data for
-  nonlinearity tests.* Physical Review Letters.
-- Lubba, C. H. et al. (2019). *catch22: CAnonical Time-series
-  CHaracteristics.* Data Mining and Knowledge Discovery.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+Work in progress, semester 2 2026. Results are preliminary and the dataset
+is expected to change.
