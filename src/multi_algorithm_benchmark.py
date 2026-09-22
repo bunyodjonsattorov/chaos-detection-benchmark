@@ -1,14 +1,13 @@
 """
 Benchmark the chaos dataset against a RANGE of algorithm families, not just catch22.
 
-Families tested (mirroring the categories in Middlehurst et al. 2024 'Bake off redux'):
-  1. Naive statistical baseline   - mean, std, lag-1 autocorrelation
-  2. Linear baseline (AR model)   - autoregressive coefficients  [the proper linear control]
-  3. Feature-based                - catch22
-  4. Convolution-based            - ROCKET
-  5. Distance-based               - 1-NN with Euclidean distance
-  6. Deep-learning-ish            - MLP on raw z-normalised series
-  7. Interval/shape proxy         - raw series into a Random Forest (phase-dependent)
+Four algorithms, each answering a different question:
+  1. Naive statistical baseline   - is this dataset trivially easy?
+  2. Linear AR(5) model           - is the structure explainable linearly?
+                                     (the honest control: IAAFT surrogates
+                                     preserve everything linear)
+  3. catch22 (feature-based)      - can a physics-aware feature set detect it?
+  4. ROCKET (convolution-based)   - can a generic SOTA method detect it?
 
 Why the AR baseline matters: IAAFT surrogates preserve everything a LINEAR process
 can explain. A properly-fitted linear model is therefore the honest control -- if it
@@ -22,8 +21,6 @@ import numpy as np, pandas as pd, warnings
 warnings.filterwarnings("ignore")
 import pycatch22
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.neural_network import MLPClassifier
 from sklearn.linear_model import RidgeClassifierCV
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -81,11 +78,6 @@ print("ACCURACY BY ALGORITHM FAMILY (5-fold CV)")
 print("-"*60)
 run("Naive statistics (mean/std/ac1)", X_naive, rf())
 run("Linear AR(5) model", X_ar, rf())
-run("Distance-based (1-NN Euclidean)", X_raw, KNeighborsClassifier(n_neighbors=1))
-run("Raw series + Random Forest", X_raw, rf())
-run("Neural net (MLP on raw series)", X_raw,
-    make_pipeline(StandardScaler(), MLPClassifier(hidden_layer_sizes=(128,64),
-                                                  max_iter=600, random_state=42)))
 run("Convolution-based (ROCKET)", X_rocket,
     make_pipeline(StandardScaler(with_mean=False), RidgeClassifierCV(alphas=np.logspace(-3,3,10))))
 run("Feature-based (catch22)", X_c22, rf())

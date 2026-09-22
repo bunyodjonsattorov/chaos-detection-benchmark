@@ -27,9 +27,10 @@ current algorithms handle them.
 ## What this repository contains
 
 A confound-controlled dataset for one such property: detecting genuine
-nonlinear / deterministic structure. Every positive signal is paired with
-control signals constructed to match it on progressively more properties,
-so that classification cannot succeed through simple shortcuts.
+nonlinear / deterministic structure (chaos). Every positive signal is
+paired with control signals constructed to match it on progressively more
+properties, so that classification cannot succeed through simple
+shortcuts.
 
 | Control type | Matches the positive on | Difficulty |
 |---|---|---|
@@ -40,18 +41,28 @@ so that classification cannot succeed through simple shortcuts.
 All series are z-normalised and resampled to 100 points, so mean, variance
 and length carry no information.
 
+### What "real vs fake" actually looks like
+
+![Signal gallery](docs/figures/signal_gallery.png)
+
+One example per system. Note that not every system uses every control
+type — Lorenz and the laser data have no periodic control, and EEG uses
+only the surrogate, since those systems don't have a natural low-effort
+"obviously fake" version. By eye, the surrogate column is often almost
+indistinguishable from the real signal — that's the point.
+
 ## Dataset
 
-`data/chaos_benchmark_v2.csv` — 1360 series of 100 points.
+`data/chaos_benchmark_v2.csv` — 1360 series of 100 points, from **5
+sources**.
 
-| Domain | System | Positive class | Controls |
+| Domain | System | Positive class | Controls used |
 |---|---|---|---|
-| simulated | logistic map (r ≈ 3.57–3.62) | chaotic | iaaft, periodic |
-| simulated | Lorenz (ρ = 28) | chaotic | iaaft, coloured noise |
-| simulated | Mackey-Glass (τ = 17) | chaotic | iaaft, coloured noise, periodic |
-| real | Santa Fe far-infrared laser | chaotic | iaaft, coloured noise |
-| real | Bonn EEG, seizure | nonlinear (contested) | iaaft |
-| real | Bonn EEG, healthy | nonlinear (contested) | iaaft |
+| simulated | logistic map (r ≈ 3.57–3.62) | chaotic | surrogate, periodic |
+| simulated | Lorenz (ρ = 28) | chaotic | surrogate, coloured noise |
+| simulated | Mackey-Glass (τ = 17) | chaotic | surrogate, coloured noise, periodic |
+| real | Santa Fe far-infrared laser | chaotic | surrogate, coloured noise |
+| real | Bonn EEG (seizure + healthy) | nonlinear (contested) | surrogate |
 
 80 series per class per system.
 
@@ -75,54 +86,59 @@ they are not equally certain:
 
 ## Results
 
-Seven algorithm families, 5-fold cross-validation:
+**4 algorithms**, chosen to each answer a different question, tested with
+5-fold cross-validation:
 
-| Algorithm | Family | Accuracy |
+| Algorithm | What it tests | Overall accuracy |
 |---|---|---|
-| ROCKET | convolution | **0.899** |
-| catch22 | feature-based | 0.875 |
-| Linear AR(5) | linear baseline | 0.760 |
-| Raw series + Random Forest | shape / interval proxy | 0.721 |
-| Naive statistics | baseline | 0.695 |
-| 1-NN Euclidean | distance-based | 0.674 |
-| MLP on raw series | neural network | 0.633 |
+| Naive statistics (mean/std/lag-1 autocorrelation) | Is this dataset trivially easy? | 0.695 |
+| Linear AR(5) model | Is the structure explainable by a linear model? | 0.760 |
+| catch22 (feature-based, built by Ben) | Can a physics-aware feature set detect it? | 0.875 |
+| ROCKET (convolution-based) | Can a generic state-of-the-art method detect it? | 0.899 |
 
-### Difficulty ladder
+### Accuracy as the fakes get harder
 
-| Control | Naive | Linear AR | ROCKET | catch22 |
-|---|---|---|---|---|
-| periodic | 0.942 | 0.970 | 1.000 | 0.995 |
-| coloured noise | 0.774 | 0.700 | 0.990 | 0.975 |
-| IAAFT surrogate | 0.643 | 0.751 | 0.867 | 0.822 |
+![Difficulty ladder](docs/figures/difficulty_ladder.png)
+
+Every method degrades as the controls match more properties, and every
+method finds the surrogate hardest. That consistency is the main evidence
+the confound design works.
 
 ### Findings
 
-1. **The confound controls work.** Every method drops monotonically as the
-   controls match more properties, and every method finds IAAFT surrogates
-   hardest. The difficulty is engineered, not accidental.
+1. **The confound controls work.** All four methods drop as the controls
+   get harder, in the same order. The difficulty is engineered, not
+   accidental.
 
-2. **Shape-based and distance-based methods fail.** 1-NN Euclidean (0.674)
-   and raw-series Random Forest (0.721) perform poorly. These rely on
-   comparing shapes and on phase-dependent position, which is exactly what
-   a process problem removes.
+2. **The linear baseline is the key theoretical control.** IAAFT
+   surrogates preserve everything a *linear* process can explain, so a
+   properly fitted AR(5) model is the honest test for "is this really
+   nonlinear structure." It reaches only 0.751 against surrogates, while
+   catch22 reaches 0.822 and ROCKET 0.867 — evidence that genuinely
+   nonlinear structure is being detected, beyond what a linear model
+   can capture.
 
-3. **Evidence of nonlinear structure.** IAAFT surrogates preserve
-   everything a linear process can explain. A fitted AR(5) model reaches
-   0.751 against surrogates while ROCKET reaches 0.867 and catch22 0.822.
+3. **A generic method (ROCKET) beats the physics-aware one (catch22).**
+   0.867 vs 0.822 on the hardest controls. ROCKET has no dynamics-specific
+   design. The supported claim is *"methods that capture real temporal
+   structure succeed, while naive statistics and shape/distance-based
+   comparison fail"* — not "physics-aware methods win."
 
 ### Limitations
 
-- ROCKET, a mainstream convolution method not designed for dynamics,
-  outperforms catch22. The claim "physics-aware methods win" is **not**
-  supported; the supported claim is that methods capturing temporal
-  structure succeed while simple statistics and shape comparison fail.
-- The AR(5) baseline scores above chance on surrogates (0.751), higher
-  than expected if surrogate matching were exact. IAAFT may not fully
-  converge on 100-point windows. Unresolved.
-- No nonlinear but non-chaotic positives, so "nonlinear" and "chaotic"
-  are not separated.
+- The AR(5) baseline does not degrade monotonically: it drops from 0.970
+  (periodic) to 0.700 (coloured noise), then rises to 0.751 (surrogate).
+  This is unexpected — in theory it should keep dropping — and is not yet
+  explained. Leading hypothesis: IAAFT convergence is imperfect on
+  100-point windows. **Open question for further investigation.**
+- No nonlinear-but-non-chaotic positives, so "nonlinear" and "chaotic"
+  are not separated in this version.
 - Real-data positives (laser, EEG) have no computed Lyapunov ground truth.
-- Leave-one-system-out generalisation has not been re-run on this version.
+- EEG labels are deliberately conservative (`nonlinear_contested`) given
+  genuine scientific dispute over whether EEG reflects true chaos.
+- Cross-system generalisation (train on 4 systems, test on the 5th) was
+  tested on an earlier, smaller version of this dataset and has not been
+  re-run here.
 
 ## Usage
 
@@ -141,14 +157,15 @@ under `data/`.
 ```
 src/     current pipeline
   build_final_dataset.py        dataset generator (seeded, reproducible)
-  multi_algorithm_benchmark.py  seven-family comparison
+  multi_algorithm_benchmark.py  algorithm comparison
   evaluate_final.py             catch22 vs naive baseline
   chaos_decision_tree.py        independent reimplementation of Toker et al. (2020)
   leave_one_domain_out_test.py  cross-system generalisation test
 
-data/    dataset and raw inputs (EEG fetched by download_data.py)
-docs/    concept glossary, full write-up, status briefing
-archive/ superseded earlier versions, kept for history
+data/      dataset and raw inputs (EEG fetched by download_data.py)
+docs/      concept glossary, full write-up, status briefing
+docs/figures/  signal gallery and results chart shown above
+archive/   superseded earlier versions, kept for history
 ```
 
 ## Data sources
@@ -183,5 +200,5 @@ them from their public sources.
 
 ## Status
 
-Work in progress, semester 2 2026. Results are preliminary and the dataset
-is expected to change.
+Work in progress, semester 2 2026. Results are preliminary and the
+dataset is expected to change.
