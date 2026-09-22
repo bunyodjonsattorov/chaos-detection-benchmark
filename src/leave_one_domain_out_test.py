@@ -15,7 +15,12 @@ from sklearn.metrics import accuracy_score
 
 df = pd.read_csv(str(_DATA / "chaos_benchmark_v2.csv"))
 series_cols = [c for c in df.columns if c.startswith("t")]
-y_all = (df["label"] == "chaotic").astype(int).values
+# NOTE: fixed 2026-09 -- the old check `label == "chaotic"` silently
+# mislabelled every EEG positive as negative, since EEG positives are
+# labelled "nonlinear_contested" (not "chaotic"), reflecting genuine
+# scientific dispute over whether EEG shows true chaos. The correct
+# target is class_type, which is consistent across all systems.
+y_all = (df["class_type"] == "positive").astype(int).values
 
 print("Extracting catch22 features once for the whole dataset...")
 feature_rows = []
@@ -41,9 +46,10 @@ for held_out in systems:
     preds = clf.predict(X_test)
     acc = accuracy_score(y_test, preds)
     results[held_out] = acc
-    print(f"Held out: {held_out:24s} | trained on the other 4 systems | test accuracy: {acc:.3f}")
+    n_other = len(systems) - 1
+    print(f"Held out: {held_out:24s} | trained on the other {n_other} systems | test accuracy: {acc:.3f}")
 
 print("\n" + "="*60)
 print(f"Average leave-one-domain-out accuracy: {np.mean(list(results.values())):.3f}")
-print("Compare to same-distribution 5-fold CV accuracy: 0.867")
+print("Compare to same-distribution 5-fold CV accuracy (catch22): 0.875")
 print("="*60)

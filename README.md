@@ -124,6 +124,16 @@ the confound design works.
    structure succeed, while naive statistics and shape/distance-based
    comparison fail"* — not "physics-aware methods win."
 
+4. **catch22 does not generalise across systems.** Leave-one-system-out
+   (train on 5 systems, test on the 6th, completely unseen) drops average
+   accuracy to **0.550** — barely above chance — compared to 0.875 when
+   all systems are seen during training. On the logistic map specifically
+   it falls to **0.392, below chance**, meaning the model learned a rule
+   from the other systems that is actively wrong for that one. This is
+   strong evidence catch22 is partly learning system-specific fingerprints
+   rather than a transferable notion of chaos. See
+   `src/leave_one_domain_out_test.py`.
+
 ### Limitations
 
 - The AR(5) baseline does not degrade monotonically: it drops from 0.970
@@ -136,9 +146,8 @@ the confound design works.
 - Real-data positives (laser, EEG) have no computed Lyapunov ground truth.
 - EEG labels are deliberately conservative (`nonlinear_contested`) given
   genuine scientific dispute over whether EEG reflects true chaos.
-- Cross-system generalisation (train on 4 systems, test on the 5th) was
-  tested on an earlier, smaller version of this dataset and has not been
-  re-run here.
+- Generalisation is poor (see finding 4 above) — this is a genuine
+  limitation of the current feature-based approach, not yet resolved.
 
 ## Usage
 
@@ -155,17 +164,19 @@ under `data/`.
 ## Repository layout
 
 ```
-src/     current pipeline
+src/     current pipeline — 4 scripts, each verified to run from a clean clone
   build_final_dataset.py        dataset generator (seeded, reproducible)
-  multi_algorithm_benchmark.py  algorithm comparison
-  evaluate_final.py             catch22 vs naive baseline
-  chaos_decision_tree.py        independent reimplementation of Toker et al. (2020)
-  leave_one_domain_out_test.py  cross-system generalisation test
+  multi_algorithm_benchmark.py  the 4-algorithm comparison above
+  leave_one_domain_out_test.py  cross-system generalisation test (finding 4)
+  chaos_decision_tree.py        independent reimplementation of Toker et al.
+                                 (2020), used as a second method to cross-check
+                                 catch22 on known ground truth
 
 data/      dataset and raw inputs (EEG fetched by download_data.py)
 docs/      concept glossary, full write-up, status briefing
 docs/figures/  signal gallery and results chart shown above
-archive/   superseded earlier versions, kept for history
+archive/   superseded scripts and earlier dataset versions, kept for history
+           (not maintained — may not run against the current data schema)
 ```
 
 ## Data sources

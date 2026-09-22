@@ -3,3 +3,6 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 data/eeg_raw.csv
+docs/my_chaos_project_full_walkthrough.md
+docs/project_concepts_glossary.md
+docs/project_status_briefing.md
